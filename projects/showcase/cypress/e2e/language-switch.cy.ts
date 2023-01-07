@@ -15,9 +15,9 @@ describe('Language switch', () => {
   });
 
   it('should change language', () => {
-    expect(driver.get.isCurrentImageEqualToSnapshot());
+    expect(driver.when.isCurrentImageEqualToSnapshot());
 
     driver.when.clickLanguageButton('French').when.waitForLanguageToChange();
-    expect(driver.get.isCurrentImageEqualToSnapshot());
+    expect(driver.when.isCurrentImageEqualToSnapshot());
   });
 });

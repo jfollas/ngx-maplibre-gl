@@ -7,7 +7,12 @@ export class E2eDriver {
   private height: number;
   private referenceImageBuffer: Buffer;
 
-  given = {};
+  given = {
+    exists: (selector: string): E2eDriver => {
+      cy.get(selector).should('exist');
+      return this;
+    },
+  };
 
   when = {
     visit: (url: string): E2eDriver => {
@@ -23,43 +28,95 @@ export class E2eDriver {
       cy.get('.lang-button').contains(language).click();
       return this;
     },
+    clickControlButton: (selector: string): E2eDriver => {
+      cy.get(selector).should('exist').click();
+      return this;
+    },
     takeImageSnapshot: (): E2eDriver => {
-      this.initReferenceImage();
+      cy.log('takeImageSnapshot()');
+      cy.get('canvas').then(this.initReferenceImage);
+      return this;
+    },
+    isCurrentImageEqualToSnapshot: (): E2eDriver => {
+      cy.log('isCurrentImageEqualToSnapshot()');
+      cy.get('canvas')
+        .then(this.compareToReference)
+        .its('mismatches')
+        .should('eq', 0);
+      return this;
+    },
+    isCurrentImageNotEqualToSnapshot: (): E2eDriver => {
+      cy.log('isCurrentImageNotEqualToSnapshot()');
+      cy.get('canvas')
+        .then(this.compareToReference)
+        .its('mismatches')
+        .should('be.gt', 0);
       return this;
     },
   };
 
-  get = {
-    isCurrentImageEqualToSnapshot: () => this.compareToReference(),
-  };
-
   private toImageBitmapBuffer(canvas: HTMLCanvasElement) {
     const base64 = canvas.toDataURL('image/png').replace(/data:.*;base64,/, '');
+    cy.log(base64.substring(0, 256));
     const buff = Cypress.Buffer.from(base64, 'base64');
     const png = PNG.sync.read(buff as any);
     return png.data;
   }
 
-  private initReferenceImage() {
+  private initReferenceImage($element: any) {
+    let ssPath: string;
+    const self = this;
+
     return cy
-      .get('canvas')
-      .then((c) => {
-        this.width = c[0].width;
-        this.height = c[0].height;
-        this.referenceImageBuffer = this.toImageBitmapBuffer(c[0]);
+      .wrap($element)
+      .screenshot('e2e-driver-initReferenceImage', {
+        capture: 'viewport',
+        overwrite: true,
+        onAfterScreenshot($el, props: any) {
+          cy.log('onAfterScreenshot');
+          ssPath = props.path;
+          self.height = props.dimensions.height;
+          self.width = props.dimensions.width;
+        },
       })
-      .should('not.be.null');
+      .then(() => {
+        cy.log('onAfterScreenshot - then');
+        cy.readFile(ssPath, null).then((png) => {
+          this.referenceImageBuffer = png;
+        });
+      });
   }
 
-  private compareToReference() {
-    return cy.get('canvas').then((c) => {
-      return pixelmatch(
-        this.referenceImageBuffer,
-        this.toImageBitmapBuffer(c[0]),
-        null,
-        this.width,
-        this.height
-      );
-    });
+  private compareToReference($element: any) {
+    let ssPath: string;
+    let self = this;
+
+    return cy
+      .wrap($element)
+      .screenshot('e2e-driver-compareToReference', {
+        capture: 'viewport',
+        overwrite: true,
+        clip: { x: 0, y: 0, height: self.height, width: self.width },
+        onAfterScreenshot($el, props: any) {
+          cy.log('onAfterScreenshot');
+          ssPath = props.path;
+        },
+      })
+      .then(() => {
+        cy.log('onAfterScreenshot - then');
+        cy.readFile(ssPath, null).then((png) => {
+          const currentImageBuffer = png;
+
+          const mismatchCount = pixelmatch(
+            this.referenceImageBuffer,
+            currentImageBuffer,
+            null,
+            this.width,
+            this.height
+          );
+
+          return cy.wrap({ mismatches: mismatchCount });
+        });
+      });
   }
 }
