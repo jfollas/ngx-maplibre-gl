@@ -3,120 +3,194 @@ import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 
 export class E2eDriver {
+  private center: { lng: number; lat: number };
+  private zoom: number;
   private width: number;
   private height: number;
   private referenceImageBuffer: Buffer;
+  private alertShown: any;
 
-  given = {
-    exists: (selector: string): E2eDriver => {
-      cy.get(selector).should('exist');
-      return this;
-    },
+  visitMapPage = (url: string): E2eDriver => {
+    cy.visit(url);
+    this.alertShown = cy.stub().as('alertShown');
+    return this;
+  };
+
+  // Aliased
+  waitForMapToIdle = (timeout: number = 4000): E2eDriver => {
+    return this.when.waitForMapToIdle(timeout);
+  };
+
+  takeImageSnapshot = (): E2eDriver => {
+    this.initReferenceImage();
+
+    // Snapshot the current map center coordinates
+    cy.window().then((win: any) => {
+      this.center = win.mglMapTestHelper.map.getCenter();
+      this.zoom = win.mglMapTestHelper.map.getZoom();
+      cy.log(
+        `Map snapshot = Center: ${this.center.lng}, ${this.center.lat}, Zoom: ${this.zoom}`
+      );
+    });
+
+    return this;
   };
 
   when = {
-    visit: (url: string): E2eDriver => {
-      cy.visit(url);
-      return this;
-    },
     wait: (ms: number): E2eDriver => {
       cy.wait(ms);
       return this;
     },
-    waitForLanguageToChange: (): E2eDriver => this.when.wait(7000),
+    waitForMapToIdle: (timeout: number = 4000): E2eDriver => {
+      cy.window()
+        .its('mglMapTestHelper.idle', { timeout: timeout })
+        .should('equal', true);
+      return this;
+    },
     clickLanguageButton: (language: string): E2eDriver => {
       cy.get('.lang-button').contains(language).click();
       return this;
     },
-    clickControlButton: (selector: string): E2eDriver => {
-      cy.get(selector).should('exist').click();
+    clickEnableTerrainControlButton: (): E2eDriver => {
+      cy.get('.maplibregl-ctrl-terrain').click();
       return this;
     },
-    takeImageSnapshot: (): E2eDriver => {
-      cy.log('takeImageSnapshot()');
-      cy.get('canvas').then(this.initReferenceImage);
+    clickDisableTerrainControlButton: (): E2eDriver => {
+      cy.get('.maplibregl-ctrl-terrain-enabled').click();
       return this;
     },
-    isCurrentImageEqualToSnapshot: (): E2eDriver => {
-      cy.log('isCurrentImageEqualToSnapshot()');
-      cy.get('canvas')
-        .then(this.compareToReference)
-        .its('mismatches')
-        .should('eq', 0);
+    clickPopupCloseButton: (): E2eDriver => {
+      cy.get('.maplibregl-popup-close-button').click();
       return this;
     },
-    isCurrentImageNotEqualToSnapshot: (): E2eDriver => {
-      cy.log('isCurrentImageNotEqualToSnapshot()');
-      cy.get('canvas')
-        .then(this.compareToReference)
-        .its('mismatches')
-        .should('be.gt', 0);
+    clickFromCodeRadioButton: (): E2eDriver => {
+      cy.get('mat-radio-button').contains('from code').click();
+      return this;
+    },
+    clickStreetsRadioButton: (): E2eDriver => {
+      cy.get('mat-radio-button').contains('streets').click();
+      return this;
+    },
+    clickCountryNamesButton: (): E2eDriver => {
+      cy.get('mat-button-toggle').contains('countries names').click();
+      return this;
+    },
+    clickZoomToBoundsButton: (): E2eDriver => {
+      cy.get('.zoom-button').click();
+      return this;
+    },
+    clickHelloCustomButton: (): E2eDriver => {
+      cy.on('window:alert', this.alertShown);
+      cy.get('.custom-control').click();
       return this;
     },
   };
 
+  assert = {
+    isSameAsSnapshot: (): E2eDriver => {
+      this.compareToReference().should('eq', 0);
+      return this;
+    },
+    isNotSameAsSnapshot: (): E2eDriver => {
+      this.compareToReference().should('be.gt', 0);
+      return this;
+    },
+    mapCanvasExists: (): E2eDriver => {
+      cy.get('canvas.maplibregl-canvas').should('have.length', 1);
+      return this;
+    },
+    mapObjectLoaded: (): E2eDriver => {
+      cy.window()
+        .its('mglMapTestHelper.loaded', { timeout: 10000 })
+        .should('equal', true);
+      return this;
+    },
+    mapTerrainPropertyDoesNotExists: (): E2eDriver => {
+      cy.window().its('mglMapTestHelper.map.terrain').should('be.null');
+      return this;
+    },
+    mapTerrainPropertyExists: (): E2eDriver => {
+      cy.window().its('mglMapTestHelper.map.terrain').should('not.be.null');
+      return this;
+    },
+    mapHasPanned: (): E2eDriver => {
+      cy.window().then((win: any) => {
+        const center = win.mglMapTestHelper.map.getCenter();
+        cy.wrap(center).should('not.deep.equal', this.center);
+      });
+      return this;
+    },
+    mapHasZoomedIn: (): E2eDriver => {
+      cy.window().then((win: any) => {
+        const zoom = win.mglMapTestHelper.map.getZoom();
+        cy.wrap(zoom).should('be.gt', this.zoom);
+      });
+      return this;
+    },
+    mapHasZoomedOut: (): E2eDriver => {
+      cy.window().then((win: any) => {
+        const zoom = win.mglMapTestHelper.map.getZoom();
+        cy.wrap(zoom).should('be.lt', this.zoom);
+      });
+      return this;
+    },
+    helloWorldPopupExists: (): E2eDriver => {
+      cy.get('.maplibregl-popup').should('exist');
+      cy.get('.custom-popup-class1').should('exist');
+      cy.get('.custom-popup-class2').should('exist');
+      cy.get('.maplibregl-popup-content').within(() => {
+        cy.get('div').should('have.text', 'Hello world !');
+      });
+      return this;
+    },
+    helloWorldPopupDoesNotExist: (): E2eDriver => {
+      cy.get('.maplibregl-popup').should('not.exist');
+      return this;
+    },
+    customHelloButtonExists: (): E2eDriver => {
+      cy.get('.custom-control').should('have.text', ' Hello ');
+      return this;
+    },
+    customPopupContainsHello: (): E2eDriver => {
+      cy.get('@alertShown').should('have.been.calledOnceWith', 'Hello');
+      return this;
+    },
+  };
+
+  private getCanvas(): Cypress.Chainable<any> {
+    return cy.get('canvas.maplibregl-canvas').its(0).should('not.be.undefined');
+  }
+
   private toImageBitmapBuffer(canvas: HTMLCanvasElement) {
     const base64 = canvas.toDataURL('image/png').replace(/data:.*;base64,/, '');
-    cy.log(base64.substring(0, 256));
     const buff = Cypress.Buffer.from(base64, 'base64');
     const png = PNG.sync.read(buff as any);
     return png.data;
   }
 
-  private initReferenceImage($element: any) {
-    let ssPath: string;
-    const self = this;
-
-    return cy
-      .wrap($element)
-      .screenshot('e2e-driver-initReferenceImage', {
-        capture: 'viewport',
-        overwrite: true,
-        onAfterScreenshot($el, props: any) {
-          cy.log('onAfterScreenshot');
-          ssPath = props.path;
-          self.height = props.dimensions.height;
-          self.width = props.dimensions.width;
-        },
-      })
-      .then(() => {
-        cy.log('onAfterScreenshot - then');
-        cy.readFile(ssPath, null).then((png) => {
-          this.referenceImageBuffer = png;
-        });
-      });
+  private initReferenceImage() {
+    return this.getCanvas().then((mapCanvas) => {
+      this.width = mapCanvas.width;
+      this.height = mapCanvas.height;
+      this.referenceImageBuffer = this.toImageBitmapBuffer(mapCanvas);
+    });
   }
 
-  private compareToReference($element: any) {
-    let ssPath: string;
-    let self = this;
-
-    return cy
-      .wrap($element)
-      .screenshot('e2e-driver-compareToReference', {
-        capture: 'viewport',
-        overwrite: true,
-        clip: { x: 0, y: 0, height: self.height, width: self.width },
-        onAfterScreenshot($el, props: any) {
-          cy.log('onAfterScreenshot');
-          ssPath = props.path;
-        },
-      })
-      .then(() => {
-        cy.log('onAfterScreenshot - then');
-        cy.readFile(ssPath, null).then((png) => {
-          const currentImageBuffer = png;
-
-          const mismatchCount = pixelmatch(
+  // Yields the number of pixels that differ from the snapshot
+  private compareToReference() {
+    return this.getCanvas()
+      .then((mapCanvas) => {
+        cy.wrap({
+          pixels: pixelmatch(
             this.referenceImageBuffer,
-            currentImageBuffer,
+            this.toImageBitmapBuffer(mapCanvas),
             null,
             this.width,
             this.height
-          );
-
-          return cy.wrap({ mismatches: mismatchCount });
+          ),
         });
-      });
+      })
+      .its('pixels')
+      .should('not.be.undefined');
   }
 }

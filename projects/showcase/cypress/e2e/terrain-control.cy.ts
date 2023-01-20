@@ -1,26 +1,51 @@
 import { E2eDriver } from '../support/e2e-driver';
 
-describe('Toggle terrain control1', () => {
-  let driver = new E2eDriver();
+describe('Terrain Control', () => {
+  context(
+    'Given I am on the Terrain Control showcase and Terrain is disabled',
+    () => {
+      let driver = new E2eDriver();
 
-  it('should toggle terrain rendering', () => {
-    driver.when
-      .visit('/demo/terrain-control')
-      .when.wait(1000)
-      .given.exists('canvas')
+      beforeEach(() => {
+        driver
+          .visitMapPage('/demo/terrain-control')
+          .waitForMapToIdle()
+          .assert.mapTerrainPropertyDoesNotExists()
+          .takeImageSnapshot();
+      });
 
-      // Map loads with Terrain disabled
-      .when.wait(4000)
-      .when.takeImageSnapshot()
+      context('When I click on the Terrain Control button once', () => {
+        beforeEach(() => {
+          // Enable Terrain
+          driver.when.clickEnableTerrainControlButton();
+        });
 
-      // Enable Terrain
-      .when.clickControlButton('.maplibregl-ctrl-terrain')
-      .when.wait(4000)
-      .when.isCurrentImageNotEqualToSnapshot()
+        it('Then I should see the map image change and Terrain is enabled', () => {
+          driver
+            .waitForMapToIdle()
+            .assert.mapTerrainPropertyExists()
+            .assert.isNotSameAsSnapshot();
+        });
+      });
 
-      // Disable Terrain
-      .when.clickControlButton('.maplibregl-ctrl-terrain-enabled')
-      .when.wait(4000)
-      .when.isCurrentImageEqualToSnapshot();
-  });
+      context('When I click on the Terrain Control button twice', () => {
+        beforeEach(() => {
+          // Enable Terrain
+          driver.when
+            .clickEnableTerrainControlButton()
+            .waitForMapToIdle()
+
+            // Disable Terrain
+            .when.clickDisableTerrainControlButton();
+        });
+
+        it('Then I should see the original map image and Terrain is disabled', () => {
+          driver
+            .waitForMapToIdle()
+            .assert.mapTerrainPropertyDoesNotExists()
+            .assert.isSameAsSnapshot();
+        });
+      });
+    }
+  );
 });
