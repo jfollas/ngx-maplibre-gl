@@ -1,0 +1,12 @@
+
+import { bootstrapApplication } from '@angular/platform-browser';
+import { ### } from './demo';
+
+bootstrapApplication(###)
+  .then((ref) => {
+    if (window['ngRef']) {
+      window['ngRef'].destroy();
+    }
+    window['ngRef'] = ref;
+  })
+  .catch((err) => console.error(err));
